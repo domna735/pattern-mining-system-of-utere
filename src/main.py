@@ -218,6 +218,12 @@ def main() -> int:
         action="store_true",
         help="Only keep the latest match per stock (writes *_latest.csv outputs)",
     )
+    parser.add_argument(
+        "--out-prefix",
+        type=str,
+        default="",
+        help="Optional output filename prefix written to outputs/ (e.g. daily_20260214). If empty, uses default filenames.",
+    )
 
     args = parser.parse_args()
 
@@ -262,12 +268,17 @@ def main() -> int:
     out_dir = Path("outputs")
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    completed_path = out_dir / ("completed_patterns_latest.csv" if args.latest_only else "completed_patterns.csv")
-    incomplete_path = out_dir / (
-        "incomplete_UTE_patterns_latest.csv" if args.latest_only else "incomplete_UTE_patterns.csv"
+    prefix = str(args.out_prefix).strip()
+    pfx = f"{prefix}_" if prefix else ""
+
+    completed_path = out_dir / (
+        f"{pfx}completed_patterns_latest.csv" if args.latest_only else f"{pfx}completed_patterns.csv"
     )
-    u_path = out_dir / ("u_signals_latest.csv" if args.latest_only else "u_signals.csv")
-    combined_path = out_dir / ("all_patterns_latest.csv" if args.latest_only else "all_patterns.csv")
+    incomplete_path = out_dir / (
+        f"{pfx}incomplete_UTE_patterns_latest.csv" if args.latest_only else f"{pfx}incomplete_UTE_patterns.csv"
+    )
+    u_path = out_dir / (f"{pfx}u_signals_latest.csv" if args.latest_only else f"{pfx}u_signals.csv")
+    combined_path = out_dir / (f"{pfx}all_patterns_latest.csv" if args.latest_only else f"{pfx}all_patterns.csv")
 
     completed_fields = [
         "StockCode",
@@ -309,14 +320,21 @@ def main() -> int:
 
     if not args.append_output:
         # Overwrite mode
-        if completed_path.exists():
-            completed_path.unlink()
-        if incomplete_path.exists():
-            incomplete_path.unlink()
-        if u_path.exists():
-            u_path.unlink()
-        if combined_path.exists():
-            combined_path.unlink()
+        try:
+            if completed_path.exists():
+                completed_path.unlink()
+            if incomplete_path.exists():
+                incomplete_path.unlink()
+            if u_path.exists():
+                u_path.unlink()
+            if combined_path.exists():
+                combined_path.unlink()
+        except PermissionError as e:
+            raise SystemExit(
+                "Cannot overwrite output CSV because it is open/locked by another program. "
+                "Close the CSV (Excel, etc.) OR rerun with --out-prefix to write to new files.\n"
+                f"Details: {e}"
+            )
 
     completed_needs_header = (not completed_path.exists()) or completed_path.stat().st_size == 0
     incomplete_needs_header = (not incomplete_path.exists()) or incomplete_path.stat().st_size == 0

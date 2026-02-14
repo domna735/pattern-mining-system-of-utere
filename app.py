@@ -4,7 +4,7 @@ import subprocess
 import sys
 import textwrap
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Callable
 
@@ -150,6 +150,16 @@ with st.sidebar:
         batch_size = st.number_input(ui.t("Batch size", "Batch size"), min_value=1, max_value=200, value=30, step=1)
         scan_start = st.text_input(ui.t("Scan start date (optional)", "掃描開始日期（可選）"), value="")
 
+        auto_prefix = st.checkbox(
+            ui.t("Auto unique output prefix (recommended)", "自動生成唯一輸出前綴（建議開）"),
+            value=True,
+            help=ui.t(
+                "Avoids Windows file-lock errors if a previous CSV is open in Excel.",
+                "可避免 Windows 因為 Excel 開住 CSV 而無法覆蓋嘅問題。",
+            ),
+        )
+        manual_prefix = st.text_input(ui.t("Output prefix", "輸出檔案前綴"), value="daily")
+
         refresh_cache = st.checkbox(ui.t("Refresh cache (re-download)", "重新下載（覆蓋快取）"), value=False)
         no_update_cache = st.checkbox(ui.t("Do not top-up cache", "不更新快取（只用現有）"), value=False)
         no_cache = st.checkbox(ui.t("Disable cache (always download)", "不使用快取（每次都下載）"), value=False)
@@ -190,6 +200,11 @@ if run:
     OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
     if mode == ui.t("Daily (1d)", "日線 (1d)"):
+        if auto_prefix:
+            out_prefix = f"{manual_prefix.strip() or 'daily'}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        else:
+            out_prefix = manual_prefix.strip()
+
         cmd: list[str] = [
             sys.executable,
             "-m",
@@ -204,6 +219,8 @@ if run:
             str(int(window)),
             "--batch-size",
             str(int(batch_size)),
+            "--out-prefix",
+            str(out_prefix),
         ]
 
         if latest_only:
@@ -222,10 +239,11 @@ if run:
         code, stdout, stderr = _run_command(cmd)
 
         suffix = "_latest" if latest_only else ""
-        completed_path = OUTPUTS_DIR / f"completed_patterns{suffix}.csv"
-        incomplete_path = OUTPUTS_DIR / f"incomplete_UTE_patterns{suffix}.csv"
-        u_path = OUTPUTS_DIR / f"u_signals{suffix}.csv"
-        all_path = OUTPUTS_DIR / f"all_patterns{suffix}.csv"
+        pfx = f"{out_prefix}_" if str(out_prefix).strip() else ""
+        completed_path = OUTPUTS_DIR / f"{pfx}completed_patterns{suffix}.csv"
+        incomplete_path = OUTPUTS_DIR / f"{pfx}incomplete_UTE_patterns{suffix}.csv"
+        u_path = OUTPUTS_DIR / f"{pfx}u_signals{suffix}.csv"
+        all_path = OUTPUTS_DIR / f"{pfx}all_patterns{suffix}.csv"
 
     else:
         cmd = [
