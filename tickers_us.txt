@@ -1,0 +1,4 @@
+# US stocks (Yahoo Finance format)
+# One ticker per line, e.g. AAPL
+AAPL
+MSFT

@@ -1,0 +1,5 @@
+# Hong Kong stocks (Yahoo Finance format)
+# One ticker per line, e.g. 0700.HK
+0700.HK
+9988.HK
+3690.HK

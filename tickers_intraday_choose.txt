@@ -1,0 +1,7 @@
+# Intraday chosen tickers (keep this file SMALL)
+# One ticker per line (Yahoo Finance format)
+# HK examples: 0700.HK, 9988.HK
+# US examples: AAPL, MSFT
+0700.HK
+9988.HK
+3690.HK

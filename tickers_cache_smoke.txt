@@ -1,0 +1,7 @@
+# Smoke test tickers (known to exist in data/cache)
+0004.HK
+0006.HK
+0023.HK
+0700.HK
+9988.HK
+3690.HK

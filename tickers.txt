@@ -1,0 +1,7 @@
+# One ticker per line (Yahoo Finance format)
+# Examples:
+# AAPL
+# MSFT
+# 0700.HK
+AAPL
+MSFT
