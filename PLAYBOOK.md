@@ -41,6 +41,8 @@ What the UI can do:
 - Choose **Daily** vs **Intraday (minute, one day)**
 - Choose ticker file, day, market (HK/US), minute interval (1m/2m/5m/15m...)
 - Run scan and download CSV outputs
+- English/中文 switch
+- Tickers can be selected from an existing file OR uploaded (`.txt`) OR pasted
 
 Important:
 
@@ -185,9 +187,13 @@ If you want a real web UI linked from your GitHub repo, common options are:
 
 - Streamlit Community Cloud (simple):
   - Push this repo to GitHub
-  - Go to Streamlit Cloud and deploy
+  - Go to Streamlit Community Cloud and deploy
   - Set the app entry file to `app.py`
   - It will give you a public URL
+
+Recommended (Option A):
+- Use Streamlit for the UI (runs the Python scanning)
+- Use GitHub just to host the code + documentation
 
 - Run locally only (no hosting): use the command in section 1b.
 

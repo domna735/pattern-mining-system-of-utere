@@ -20,6 +20,31 @@ pip install -r requirements.txt
 python -m src.main --period 5y --window 30
 ```
 
+## Web UI (English/中文)
+
+This repo includes a simple Web UI (Streamlit) that lets you:
+- choose Daily vs Intraday (minute)
+- choose day + minute interval
+- select a tickers file OR upload a `.txt` OR paste tickers
+- run scan and download results
+
+Run locally:
+
+```powershell
+python -m streamlit run app.py
+```
+
+### Deploy from GitHub (Streamlit Community Cloud)
+
+GitHub Pages cannot run Python. For a public UI, deploy `app.py` on Streamlit Community Cloud:
+
+1) Push this repo to GitHub
+2) In Streamlit Cloud: "Create app" → select this repo
+3) App file: `app.py`
+4) Deploy
+
+Streamlit will give you a public URL.
+
 For Hong Kong tickers (default), use `tickers_hk.txt` with symbols like `0700.HK`.
 US tickers can be placed in `tickers_us.txt` (e.g. `AAPL`) and passed via `--tickers tickers_us.txt`.
 
