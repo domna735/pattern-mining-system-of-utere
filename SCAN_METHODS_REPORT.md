@@ -1,6 +1,6 @@
 # 掃描條件方法（U‑T‑E‑R‑E）
 
-日期：2026-02-08
+日期：2026-02-16
 
 ---
 
@@ -19,6 +19,12 @@
 
 - 預設目錄：`data/cache/`
 - 命名：`{Ticker}__{Period}__{Interval}.csv`（例如 `0700.HK__5y__1d.csv`）
+
+Ticker 輸入（tickers `.txt`）：
+
+- 會忽略空白行、以及以 `#` 開頭嘅註解行
+- 會自動處理 UTF‑8 BOM（避免出現 `\ufeff0700.HK` 呢種壞 symbol）
+- HK ticker 支援「只輸入數字」：例如 `700` 會 normalize 成 `0700.HK`
 
 前處理（見 `src/utere/data_source.py::_basic_clean_ohlc`）：
 
@@ -79,6 +85,7 @@
 以下係 `src/utere/scanner.py::ScanConfig` 目前預設：
 
 - `window_size = 30`：每個候選 U 之後嘅「最大掃描視窗」
+  - 亦支援 multi-window 掃描：一次跑多個 `window_size`，再合併/去重（見下文 `--windows`）
 - `u_lookback = 3`：用嚟定義 U 前底 / 或 downtrend 計算嘅 lookback（會被 clamp）
 - `downtrend_bearish_min = 2`：嚴格 downtrend 模式下，近 3–5 棒內最少陰燭數
 - `u_use_drawdown_filter = True`：U 的賣壓資格預設用「一年回撤」而非嚴格 3 棒下跌結構
@@ -95,6 +102,8 @@
 CLI 對應（見 `src/main.py`）：
 
 - `--window` → `window_size`
+- `--windows` → multi-window 掃描（例如 `20,50,100,200`），會覆蓋 `--window`
+- `--min-window-support` → noise filter：只保留「至少出現於 N 個 window」嘅結果（預設 `1` = 不過濾）
 - `--u-lookback` → `u_lookback`
 - `--downtrend-bearish-min` → `downtrend_bearish_min`
 - `--u-use-drawdown` / `--u-use-downtrend` → `u_use_drawdown_filter`
@@ -105,6 +114,20 @@ CLI 對應（見 `src/main.py`）：
 - `--max-r-bars` → `max_r_bars`
 - `--max-e2-bars` → `max_e2_bars`
 - `--r-strict-next` → `r_strict_next`
+
+### 4.1) Multi-window 掃描（merge + de-dup + filter noise）
+
+當用 `--windows 20,50,100,200`：
+
+- 系統會對同一隻股票，用多個 `window_size` 分別掃描
+- 然後將結果 **合併（merge）**、**去重（de-dup）**、再按時間排序
+- `--min-window-support N` 可以用嚟降低 noise：
+  - 例如 `N=2` 表示：某條 pattern（同一 ticker + 同一組 U/T/E... 日期）需要至少喺 2 個不同 window 之下都掃到，先會保留
+
+備註：
+
+- Streamlit UI 已提供 Window 模式：`Single window` / `Multi windows`（輸入一串 windows）
+- 目前 `--min-window-support` 係 CLI 參數；如要喺 UI 用 noise filter，需要用 CLI 跑（或再擴充 UI）
 
 ---
 
