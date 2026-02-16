@@ -28,18 +28,38 @@ If you get errors about missing packages later, run this command again.
 
 This repo includes a simple Web UI (built with Streamlit) so non-technical users can run scans by clicking buttons.
 
-Start it:
+### Start it (one command)
+
+1) Open **PowerShell**
+
+2) Make sure your current folder is this repo root:
 
 ```powershell
-& "C:/pattern mining system of utere/.venv/Scripts/python.exe" -m streamlit run app.py
+cd "C:/pattern mining system of utere"
 ```
 
-Then open the local URL shown in the terminal (usually `http://localhost:8501`).
+3) Run the UI with a fixed port (8503) in headless mode:
+
+```powershell
+& "C:/pattern mining system of utere/.venv/Scripts/python.exe" -m streamlit run app.py --server.headless true --server.port 8503
+```
+
+### Open the UI in your browser
+
+- Open: `http://localhost:8503`
+- If that doesn’t work, try: `http://127.0.0.1:8503`
+
+In `--server.headless true` mode, Streamlit usually does **not** auto-open a browser tab, so you must open the URL yourself.
+
+### Stop the UI
+
+- In the PowerShell window that is running Streamlit, press `Ctrl + C`.
 
 What the UI can do:
 
 - Choose **Daily** vs **Intraday (minute, one day)**
 - Choose ticker file, day, market (HK/US), minute interval (1m/2m/5m/15m...)
+- Choose **Window mode**: single window OR multi-windows list (e.g. 20,50,100,200)
 - Run scan and download CSV outputs
 - English/中文 switch
 - Tickers can be selected from an existing file OR uploaded (`.txt`) OR pasted
@@ -48,6 +68,14 @@ Important:
 
 - Intraday minute data is huge. Always use a **small** ticker file for intraday.
 - Yahoo Finance can rate-limit. If it happens, reduce batch size or use 5m / 15m.
+
+### Troubleshooting (local UI)
+
+- If you see an error like “Port 8503 is already in use”, close the other Streamlit window (or change the port, e.g. `--server.port 8504`).
+- If the browser can’t open the page:
+  - confirm you ran the command from the repo root (`C:/pattern mining system of utere`)
+  - allow Python through Windows Firewall if prompted
+  - try `http://127.0.0.1:8503`
 
 ## 2) Generate HK ticker universe (Yahoo format)
 
@@ -63,6 +91,11 @@ Output:
 - `tickers_hk_all.txt` (one ticker per line like `0700.HK`)
 
 ## 3) Run a small smoke test (recommended)
+
+Note on ticker format (HK):
+
+- You can write HK tickers as `0700.HK` **or** just the number like `700`.
+- The system will auto-format numeric HK codes into `0000.HK` format.
 
 ```powershell
 & "C:/pattern mining system of utere/.venv/Scripts/python.exe" -m src.main --tickers tickers_hk.txt --period 1y --window 30 --scan-start 2026-01-01 --batch-size 5 --refresh-cache
@@ -81,6 +114,23 @@ Recommended baseline for 2700+ tickers:
 & "C:/pattern mining system of utere/.venv/Scripts/python.exe" -m src.main --tickers tickers_hk_all.txt --period 5y --window 30 --scan-start 2026-01-01 --batch-size 30 --cache-dir data/cache --max-retries 3 --backoff-seconds 2 --pause-between-batches 0.2
 ```
 
+### 4b) Multi-window scan (merge + de-dup + filter noise)
+
+If you want to scan multiple window sizes (e.g. 20/50/100/200) in one run and then:
+
+- merge results
+- de-dup
+- sort
+- (optional) filter noise
+
+Use `--windows`.
+
+Example (keep patterns that appear in at least 2 windows):
+
+```powershell
+& "C:/pattern mining system of utere/.venv/Scripts/python.exe" -m src.main --tickers tickers_hk_all.txt --period 5y --windows 20,50,100,200 --min-window-support 2 --scan-start 2026-01-01 --batch-size 30 --cache-dir data/cache
+```
+
 ### Notes on performance & reliability
 
 - **First run is slow**: it downloads and populates `data/cache/`.
@@ -96,6 +146,12 @@ HK example (1m, within HK regular session; excludes lunch break by default):
 
 ```powershell
 & "C:/pattern mining system of utere/.venv/Scripts/python.exe" -m src.minute_scan --tickers tickers_intraday_choose.txt --day 2026-02-14 --market HK --interval 1m
+```
+
+Multi-window intraday example (merge + de-dup; keep patterns that appear in at least 2 windows):
+
+```powershell
+& "C:/pattern mining system of utere/.venv/Scripts/python.exe" -m src.minute_scan --tickers tickers_intraday_choose.txt --day 2026-02-14 --market HK --interval 1m --windows 20,50,100,200 --min-window-support 2
 ```
 
 Outputs (written to `outputs/` with prefix `intraday_` by default):

@@ -12,7 +12,26 @@ import yfinance as yf
 from .utere.scanner import ScanConfig, scan_dataframe_for_patterns
 
 
-def _read_tickers(path: Path) -> list[str]:
+def _read_tickers(path: Path, market: str) -> list[str]:
+    def _normalize_hk(token: str) -> str:
+        t = token.strip()
+        if not t:
+            return t
+
+        upper = t.upper()
+        if upper.endswith(".HK"):
+            base = upper[: -len(".HK")]
+            if base.isdigit() and len(base) <= 4:
+                return f"{base.zfill(4)}.HK"
+            return upper
+
+        if t.isdigit():
+            if len(t) <= 4:
+                return f"{t.zfill(4)}.HK"
+            return f"{t}.HK"
+
+        return t
+
     lines = path.read_text(encoding="utf-8").splitlines()
     tickers: list[str] = []
     for line in lines:
@@ -20,6 +39,9 @@ def _read_tickers(path: Path) -> list[str]:
         if not stripped or stripped.startswith("#"):
             continue
         tickers.append(stripped)
+
+    if market.strip().upper() == "HK":
+        return [_normalize_hk(t) for t in tickers]
     return tickers
 
 
@@ -225,6 +247,18 @@ def main() -> int:
 
     # Scan rules: reuse the exact same rule engine.
     parser.add_argument("--window", type=int, default=30, help="Sliding window size (bars)")
+    parser.add_argument(
+        "--windows",
+        type=str,
+        default=None,
+        help="Comma-separated window sizes to scan and merge, e.g. 20,50,100,200. If set, overrides --window.",
+    )
+    parser.add_argument(
+        "--min-window-support",
+        type=int,
+        default=1,
+        help="Noise filter: keep matches that appear in at least N windows (default: 1 = no filtering).",
+    )
     parser.add_argument("--u-lookback", type=int, default=3, help="Bars immediately before U (min 3)")
     parser.add_argument("--downtrend-bearish-min", type=int, default=2, help="Min bearish bars before U")
 
@@ -263,6 +297,33 @@ def main() -> int:
 
     args = parser.parse_args()
 
+    def _parse_windows(text: str | None) -> list[int]:
+        if text is None:
+            return []
+        cleaned = text.strip()
+        if not cleaned:
+            return []
+        parts = [p.strip() for p in cleaned.replace(" ", ",").split(",")]
+        out: list[int] = []
+        for p in parts:
+            if not p:
+                continue
+            w = int(p)
+            if w <= 0:
+                raise ValueError("Window sizes must be positive")
+            out.append(w)
+        seen: set[int] = set()
+        uniq: list[int] = []
+        for w in out:
+            if w in seen:
+                continue
+            seen.add(w)
+            uniq.append(w)
+        return uniq
+
+    windows = _parse_windows(args.windows) if args.windows else [int(args.window)]
+    min_support = max(1, int(args.min_window_support))
+
     scan_day = _parse_day(args.day)
 
     if bool(args.u_use_drawdown_filter):
@@ -299,19 +360,20 @@ def main() -> int:
             break_end=_parse_hhmm(args.break_end),
         )
 
-    tickers = _read_tickers(Path(args.tickers))
+    tickers = _read_tickers(Path(args.tickers), market=args.market)
     if not tickers:
         raise SystemExit("No tickers found")
 
-    cfg = ScanConfig(
-        window_size=int(args.window),
-        u_lookback=int(args.u_lookback),
-        downtrend_bearish_min=int(args.downtrend_bearish_min),
-        u_use_drawdown_filter=False,
-        max_r_bars=int(args.max_r_bars),
-        max_e2_bars=int(args.max_e2_bars),
-        r_strict_next=bool(args.r_strict_next),
-    )
+    def _make_scan_cfg(window_size: int) -> ScanConfig:
+        return ScanConfig(
+            window_size=int(window_size),
+            u_lookback=int(args.u_lookback),
+            downtrend_bearish_min=int(args.downtrend_bearish_min),
+            u_use_drawdown_filter=False,
+            max_r_bars=int(args.max_r_bars),
+            max_e2_bars=int(args.max_e2_bars),
+            r_strict_next=bool(args.r_strict_next),
+        )
 
     start_dt = datetime(scan_day.year, scan_day.month, scan_day.day)
     end_dt = start_dt + timedelta(days=1)
@@ -393,13 +455,73 @@ def main() -> int:
                 if df.empty:
                     continue
 
-                completed, incomplete, u_only = scan_dataframe_for_patterns(
-                    df,
-                    ticker=ticker,
-                    cfg=cfg,
-                    scan_start_date=None,
-                    output_datetime=True,
-                )
+                def _k_completed(r: dict) -> tuple:
+                    return (
+                        r.get("StockCode", ticker),
+                        r.get("U_Date", ""),
+                        r.get("T_Date", ""),
+                        r.get("E1_Date", ""),
+                        r.get("R_Date", ""),
+                        r.get("E2_Date", ""),
+                        "COMPLETED",
+                    )
+
+                def _k_incomplete(r: dict) -> tuple:
+                    return (
+                        r.get("StockCode", ticker),
+                        r.get("U_Date", ""),
+                        r.get("T_Date", ""),
+                        r.get("E1_Date", ""),
+                        "UTE_incomplete",
+                    )
+
+                def _k_u(r: dict) -> tuple:
+                    return (r.get("StockCode", ticker), r.get("U_Date", ""), "U_only")
+
+                completed_by_key: dict[tuple, dict] = {}
+                incomplete_by_key: dict[tuple, dict] = {}
+                u_by_key: dict[tuple, dict] = {}
+
+                completed_support: dict[tuple, set[int]] = {}
+                incomplete_support: dict[tuple, set[int]] = {}
+                u_support: dict[tuple, set[int]] = {}
+
+                for w in windows:
+                    cfg_w = _make_scan_cfg(window_size=w)
+                    c, inc, uo = scan_dataframe_for_patterns(
+                        df,
+                        ticker=ticker,
+                        cfg=cfg_w,
+                        scan_start_date=None,
+                        output_datetime=True,
+                    )
+
+                    for row in c:
+                        k = _k_completed(row)
+                        completed_by_key.setdefault(k, row)
+                        completed_support.setdefault(k, set()).add(int(w))
+
+                    for row in inc:
+                        k = _k_incomplete(row)
+                        incomplete_by_key.setdefault(k, row)
+                        incomplete_support.setdefault(k, set()).add(int(w))
+
+                    for row in uo:
+                        k = _k_u(row)
+                        u_by_key.setdefault(k, row)
+                        u_support.setdefault(k, set()).add(int(w))
+
+                completed = [
+                    r for k, r in completed_by_key.items() if len(completed_support.get(k, set())) >= min_support
+                ]
+                incomplete = [
+                    r for k, r in incomplete_by_key.items() if len(incomplete_support.get(k, set())) >= min_support
+                ]
+                u_only = [r for k, r in u_by_key.items() if len(u_support.get(k, set())) >= min_support]
+
+                completed.sort(key=lambda r: (r.get("StockCode", ""), r.get("Pattern_Complete_Date", ""), r.get("U_Date", "")))
+                incomplete.sort(key=lambda r: (r.get("StockCode", ""), r.get("E1_Date", ""), r.get("U_Date", "")))
+                u_only.sort(key=lambda r: (r.get("StockCode", ""), r.get("U_Date", "")))
 
                 if args.latest_only:
                     if completed:

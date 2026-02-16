@@ -23,13 +23,32 @@ class McapConfig:
 
 
 def _read_tickers(path: Path) -> list[str]:
+    def _normalize_hk(token: str) -> str:
+        t = token.strip()
+        if not t:
+            return t
+
+        upper = t.upper()
+        if upper.endswith(".HK"):
+            base = upper[: -len(".HK")]
+            if base.isdigit() and len(base) <= 4:
+                return f"{base.zfill(4)}.HK"
+            return upper
+
+        if t.isdigit():
+            if len(t) <= 4:
+                return f"{t.zfill(4)}.HK"
+            return f"{t}.HK"
+
+        return t
+
     lines = path.read_text(encoding="utf-8").splitlines()
     out: list[str] = []
     for line in lines:
         s = line.strip().lstrip("\ufeff")
         if not s or s.startswith("#"):
             continue
-        out.append(s)
+        out.append(_normalize_hk(s))
     return out
 
 

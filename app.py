@@ -76,6 +76,28 @@ st.caption(ui.t("Rule-based scan. Daily or intraday (one day only).", "規則掃
 with st.sidebar:
     st.header(ui.t("Run Settings", "運行設定"))
 
+    def _parse_windows_text(text: str) -> list[int]:
+        cleaned = (text or "").strip()
+        if not cleaned:
+            return []
+        parts = [p.strip() for p in cleaned.replace(" ", ",").split(",")]
+        out: list[int] = []
+        for p in parts:
+            if not p:
+                continue
+            w = int(p)
+            if w <= 0:
+                raise ValueError("Window sizes must be positive")
+            out.append(w)
+        seen: set[int] = set()
+        uniq: list[int] = []
+        for w in out:
+            if w in seen:
+                continue
+            seen.add(w)
+            uniq.append(w)
+        return uniq
+
     mode = st.selectbox(ui.t("Mode", "模式"), [ui.t("Daily (1d)", "日線 (1d)"), ui.t("Intraday (minute, one day)", "分鐘圖（只掃同一日）")])
 
     ticker_files = _list_ticker_files()
@@ -146,7 +168,40 @@ with st.sidebar:
 
     if mode == ui.t("Daily (1d)", "日線 (1d)"):
         period = st.selectbox(ui.t("Period", "Period"), ["1y", "2y", "5y", "max"], index=2)
-        window = st.number_input(ui.t("Window (bars)", "Window（K線數）"), min_value=5, max_value=200, value=30, step=1)
+
+        window_mode = st.radio(
+            ui.t("Window mode", "Window 模式"),
+            [ui.t("Single window", "單一 window"), ui.t("Multi windows", "多 window")],
+            index=0,
+        )
+        window_single: int | None = None
+        windows_text: str | None = None
+        windows_list: list[int] = []
+        windows_parse_error: str | None = None
+
+        if window_mode == ui.t("Single window", "單一 window"):
+            window_single = int(
+                st.number_input(ui.t("Window (bars)", "Window（K線數）"), min_value=5, max_value=200, value=30, step=1)
+            )
+        else:
+            windows_text = st.text_input(
+                ui.t("Windows (comma-separated)", "Windows（用逗號分隔）"),
+                value="20,50,100,200",
+                help=ui.t(
+                    "Example: 20,50,100,200 (scan all and merge/dedupe).",
+                    "例如：20,50,100,200（全部掃一次，再合併/去重）。",
+                ),
+            )
+            try:
+                windows_list = _parse_windows_text(windows_text)
+                if not windows_list:
+                    windows_parse_error = ui.t("Please enter at least one window.", "請至少輸入一個 window。")
+                else:
+                    st.caption(ui.t(f"Parsed windows: {windows_list}", f"已解析 windows：{windows_list}"))
+            except Exception as e:
+                windows_parse_error = ui.t(f"Invalid windows: {e}", f"Windows 格式錯誤：{e}")
+                st.error(windows_parse_error)
+
         batch_size = st.number_input(ui.t("Batch size", "Batch size"), min_value=1, max_value=200, value=30, step=1)
         scan_start = st.text_input(ui.t("Scan start date (optional)", "掃描開始日期（可選）"), value="")
 
@@ -170,7 +225,40 @@ with st.sidebar:
         day = st.date_input(ui.t("Day", "日期"), value=date.today())
         market = st.selectbox(ui.t("Market", "市場"), ["HK", "US"], index=0)
         interval = st.selectbox(ui.t("Interval", "分鐘間隔"), ["1m", "2m", "5m", "15m", "30m"], index=0)
-        window = st.number_input(ui.t("Window (bars)", "Window（K線數）"), min_value=5, max_value=300, value=30, step=1)
+
+        window_mode = st.radio(
+            ui.t("Window mode", "Window 模式"),
+            [ui.t("Single window", "單一 window"), ui.t("Multi windows", "多 window")],
+            index=0,
+        )
+        window_single: int | None = None
+        windows_text: str | None = None
+        windows_list: list[int] = []
+        windows_parse_error: str | None = None
+
+        if window_mode == ui.t("Single window", "單一 window"):
+            window_single = int(
+                st.number_input(ui.t("Window (bars)", "Window（K線數）"), min_value=5, max_value=300, value=30, step=1)
+            )
+        else:
+            windows_text = st.text_input(
+                ui.t("Windows (comma-separated)", "Windows（用逗號分隔）"),
+                value="20,50,100,200",
+                help=ui.t(
+                    "Example: 20,50,100,200 (scan all and merge/dedupe).",
+                    "例如：20,50,100,200（全部掃一次，再合併/去重）。",
+                ),
+            )
+            try:
+                windows_list = _parse_windows_text(windows_text)
+                if not windows_list:
+                    windows_parse_error = ui.t("Please enter at least one window.", "請至少輸入一個 window。")
+                else:
+                    st.caption(ui.t(f"Parsed windows: {windows_list}", f"已解析 windows：{windows_list}"))
+            except Exception as e:
+                windows_parse_error = ui.t(f"Invalid windows: {e}", f"Windows 格式錯誤：{e}")
+                st.error(windows_parse_error)
+
         batch_size = st.number_input(ui.t("Batch size", "Batch size"), min_value=1, max_value=200, value=20, step=1)
         out_prefix = st.text_input(ui.t("Output prefix", "輸出檔案前綴"), value="intraday")
 
@@ -190,7 +278,12 @@ with st.sidebar:
 
         run_label = ui.t("Run intraday scan", "開始分鐘圖掃描")
 
-    run = st.button(run_label, type="primary", disabled=(tickers_path is None))
+    # Disable Run if windows parsing failed.
+    windows_ok = True
+    if "windows_parse_error" in locals() and windows_parse_error:
+        windows_ok = False
+
+    run = st.button(run_label, type="primary", disabled=(tickers_path is None or (not windows_ok)))
 
 st.divider()
 
@@ -215,13 +308,17 @@ if run:
             str(period),
             "--interval",
             "1d",
-            "--window",
-            str(int(window)),
             "--batch-size",
             str(int(batch_size)),
             "--out-prefix",
             str(out_prefix),
         ]
+
+        if window_mode == ui.t("Single window", "單一 window"):
+            cmd += ["--window", str(int(window_single or 30))]
+        else:
+            # Use parsed windows to avoid passing invalid text through.
+            cmd += ["--windows", ",".join(str(w) for w in windows_list)]
 
         if latest_only:
             cmd.append("--latest-only")
@@ -258,13 +355,16 @@ if run:
             str(market),
             "--interval",
             str(interval),
-            "--window",
-            str(int(window)),
             "--batch-size",
             str(int(batch_size)),
             "--out-prefix",
             str(out_prefix).strip() or "intraday",
         ]
+
+        if window_mode == ui.t("Single window", "單一 window"):
+            cmd += ["--window", str(int(window_single or 30))]
+        else:
+            cmd += ["--windows", ",".join(str(w) for w in windows_list)]
 
         if latest_only:
             cmd.append("--latest-only")

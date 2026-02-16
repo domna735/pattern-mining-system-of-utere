@@ -25,6 +25,7 @@ python -m src.main --period 5y --window 30
 This repo includes a simple Web UI (Streamlit) that lets you:
 - choose Daily vs Intraday (minute)
 - choose day + minute interval
+- choose window mode: single window OR multi-windows list (e.g. 20,50,100,200)
 - select a tickers file OR upload a `.txt` OR paste tickers
 - run scan and download results
 
@@ -46,7 +47,10 @@ GitHub Pages cannot run Python. For a public UI, deploy `app.py` on Streamlit Co
 Streamlit will give you a public URL.
 
 For Hong Kong tickers (default), use `tickers_hk.txt` with symbols like `0700.HK`.
+You can also input numeric HK codes (e.g. `700`) and the system will normalize to `0700.HK`.
 US tickers can be placed in `tickers_us.txt` (e.g. `AAPL`) and passed via `--tickers tickers_us.txt`.
+
+Note: advanced noise filtering for multi-window scans is available in CLI via `--min-window-support`.
 
 ## Get full HK ticker list
 
